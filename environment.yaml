@@ -1,0 +1,11 @@
+#  conda env create --name bsseq --file environment.yaml 
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - snakemake=7.25.2
+  - bowtie2=2.5.1
+  - samtools=1.17
+  - bismark=0.24.1
+  - perl-gdgraph=1.54
