@@ -1,6 +1,7 @@
+data/TAIR10.fasta
 exercise_raw
 log
+qc
 raw
 results
 tmp
-.snakemake

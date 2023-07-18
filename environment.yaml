@@ -1,7 +1,7 @@
 #  conda env create --name bsseq --file environment.yaml 
 channels:
-  - conda-forge
   - bioconda
+  - conda-forge
   - defaults
 dependencies:
   - snakemake=7.25.2
@@ -9,3 +9,6 @@ dependencies:
   - samtools=1.17
   - bismark=0.24.1
   - perl-gdgraph=1.54
+  - ucsc-bedgraphtobigwig
+  - deeptools=3.5.2
+  - bedtools=2.31.0

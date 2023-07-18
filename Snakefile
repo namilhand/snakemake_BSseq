@@ -11,6 +11,13 @@ configfile: "config.yaml"
 ## library info
 SAMPLE = config["SAMPLES"]
 REFGENOME = config["GENOME"]["refgenome"]
+REFGENOME_SIZE = config["GENOME"]["refgenome_size"]
+REFGENOME_NAME = config["GENOME"]["name"]
+
+## tiled genome
+WINDOW_SIZE_NAME = config["GENOMETILE"]["window_size_name"]
+STEP_SIZE_NAME = config["GENOMETILE"]["step_size_name"]
+
 
 # Specify the desired end target file(s)
 rule all:
@@ -26,7 +33,42 @@ rule all:
         expand("results/bams/{sample}.dedup.report.txt",
                 sample = SAMPLE),
         expand("results/methylext/{sample}",
-                sample = SAMPLE)
+                sample = SAMPLE),
+        expand("qc/bisulfite_conversion_rate/{sample}_bs-conversion-rate.txt",
+                sample = SAMPLE),
+        expand("results/bedg/{sample}.dedup.{context}.bedg",
+                sample = SAMPLE,
+                context = ["C", "CG", "CHG", "CHH"]),
+        expand("results/bw/{sample}.dedup.{context}.bw",
+                sample = SAMPLE,
+                context = ["C", "CG", "CHG", "CHH"]),
+        expand("data/tiled_genome_bed/{refgenome}_window_{window_size_name}_step_{step_size_name}.bed",
+                refgenome = REFGENOME_NAME,
+                window_size_name = WINDOW_SIZE_NAME,
+                step_size_name = STEP_SIZE_NAME),
+        expand("results/bedg/tiled/window_{window_size_name}_step_{step_size_name}/{sample}_{context}_{refgenome}_window{window_size_name}_step{step_size_name}.bedg",
+                sample = SAMPLE,
+                window_size_name = WINDOW_SIZE_NAME,
+                step_size_name = STEP_SIZE_NAME,
+                refgenome = REFGENOME_NAME,
+                context = ["C", "CG", "CHG", "CHH"]),
+        expand("results/tsv/tiled/window_{window_size_name}_step_{step_size_name}/{sample}_{context}_{refgenome}_window{window_size_name}_step{step_size_name}.tsv",
+                sample = SAMPLE,
+                window_size_name = WINDOW_SIZE_NAME,
+                step_size_name = STEP_SIZE_NAME,
+                refgenome = REFGENOME_NAME,
+                context = ["C", "CG", "CHG", "CHH"]),
+        expand("results/metaprofile/{region}/{sample}_metaprofile_region-{region}_referencePoint-{refpoint}_{context}.gz",
+                sample = SAMPLE,
+                region = ["longTE"],
+                refpoint = ["TSS"],
+                context = ["CG", "CHG"]),
+        expand("results/metaprofile/{region}/tsv/{sample}_metaprofile_region-{region}_referencePoint-{refpoint}_{context}.tsv",
+                sample = SAMPLE,
+                region = ["longTE"],
+                refpoint = ["TSS"],
+                context = ["CG", "CHG"])
+        #context = ["C", "CG", "CHG", "CHH"])
 
 rule bismark_pe:
     """Align BS-seq reads using Bismark"""
@@ -111,3 +153,127 @@ rule methylext:
     # Coverage file contains two additional column to the bedGraph format: [count methylated] [count unmethylated]
     # By default, --bedGraph only consider CpG, but it can be extended to cytosines in any context by using the option --CX.
     # --cytosine_report: Every cytosines will be considered irrespective of whethere they were actually covered by any reads in the experiment or not. As for the bedGraph mode, --CX enables cytosines in any context to be considered.
+
+rule bsconversion_rate:
+    output:
+        "qc/bisulfite_conversion_rate/{sample}_bs-conversion-rate.txt",
+    input:
+        "results/methylext/{sample}/{sample}.dedup.CX_report.txt"
+    shell:
+        r"""
+        Rscript src/bisulfite_conversion_rate.R {input} {output}
+        """
+
+rule cx2bedg:
+    output:
+        "results/bedg/{sample}.dedup.{context}.bedg"
+    input:
+        "results/methylext/{sample}/{sample}.dedup.CX_report.txt"
+    params:
+        context="{context}",
+        temp_dir="tmp"
+    shell:
+        r"""
+        bash src/cx2bedGraph.sh {input} results/bedg {params.context} {params.temp_dir}
+        """
+
+rule bedg2bw:
+    output:
+        "results/bw/{sample}.dedup.{context}.bw"
+    input:
+        "results/bedg/{sample}.dedup.{context}.bedg"
+    params:
+        refgenome_size=REFGENOME_SIZE
+    shell:
+        r"""
+        bedGraphToBigWig {input} {params.refgenome_size} {output}
+        """
+rule tiling_genome:
+    output:
+        "data/tiled_genome_bed/{refgenome}_window_{window_size_name}_step_{step_size_name}.bed"
+    input:
+        config["GENOME"]["refgenome"]
+    params:
+        refgenome = REFGENOME_SIZE,
+        window = config["GENOMETILE"]["window_size"],
+        step = config["GENOMETILE"]["step_size"]
+    shell:
+        r"""
+        bash src/tiling_refgenome_to_bed.sh {params.refgenome} {params.window} {params.step} {output}
+        """
+
+rule tiling_cx_bedg:
+    output:
+        "results/bedg/tiled/window_{window_size_name}_step_{step_size_name}/{sample}_{context}_{refgenome}_window{window_size_name}_step{step_size_name}.bedg"
+    input:
+        bedg = "results/bedg/{sample}.dedup.{context}.bedg",
+        bed = "data/tiled_genome_bed/{refgenome}_window_{window_size_name}_step_{step_size_name}.bed"
+    shell:
+        # -c: the column from the B file to map onto intervals in A.
+        r"""
+        bedtools map -c 4 -o mean \
+                -a {input.bed} \
+                -b {input.bedg} \
+                > {output}
+        """
+
+rule bedg2tsv:
+    # Caution: It only works when window size = step size
+    output:
+        "results/tsv/tiled/window_{window_size_name}_step_{step_size_name}/{sample}_{context}_{refgenome}_window{window_size_name}_step{step_size_name}.tsv"
+    input:
+        "results/bedg/tiled/window_{window_size_name}_step_{step_size_name}/{sample}_{context}_{refgenome}_window{window_size_name}_step{step_size_name}.bedg"
+    params:
+        refgenome = config["GENOME"]["refgenome_fasta"],
+        window_size = config["GENOMETILE"]["window_size"]
+    shell:
+        r"""
+        Rscript src/genomeBin_bedgraphToTSV.R {input} {params.refgenome} {params.window_size} {output}
+        """
+
+rule metaprofile:
+    output:
+        gzip = "results/metaprofile/{region}/{sample}_metaprofile_region-{region}_referencePoint-{refpoint}_{context}.gz",
+        tab = "results/metaprofile/{region}/{sample}_metaprofile_region-{region}_referencePoint-{refpoint}_{context}.tab",
+        bed = "results/metaprofile/{region}/{sample}_metaprofile_region-{region}_referencePoint-{refpoint}_{context}.bed"
+    input:
+        "results/bw/{sample}.dedup.{context}.bw"
+    params:
+        refpoint="{refpoint}",
+        region = config["METAPROFILE"]["region"],
+        binSize = config["METAPROFILE"]["binSize"]
+    threads:
+        config["METAPROFILE"]["threads"]
+    log:
+        "log/metaprofile/{sample}_metaprofile_region-{region}_referencePoint-{refpoint}_{context}.log"
+    shell:
+        r"""
+        computeMatrix reference-point \
+                --referencePoint {params.refpoint} \
+                -b 2000 -a 2000 \
+                -R {params.region} \
+                -S {input} \
+                --binSize {params.binSize} \
+                --sortRegions "keep" \
+                --sortUsing "mean" \
+                --samplesLabel {wildcards.sample} \
+                --nanAfterEnd \
+                -p {threads} \
+                --outFileName {output.gzip} \
+                --outFileNameMatrix {output.tab} \
+                --outFileSortedRegions {output.bed} &> {log}
+        """
+rule avgBins:
+    output: "results/metaprofile/{region}/tsv/{sample}_metaprofile_region-{region}_referencePoint-{refpoint}_{context}.tsv"
+    input: "results/metaprofile/{region}/{sample}_metaprofile_region-{region}_referencePoint-{refpoint}_{context}.tab"
+    params:
+        upstream = config["METAPROFILE"]["upstream"],
+        downstream = config["METAPROFILE"]["downstream"],
+        binSize = config["METAPROFILE"]["binSize"]
+    shell:
+        r"""
+        Rscript src/averageComputeMatrixTab.R {input} \
+                {params.upstream} {params.downstream} \
+                {params.binSize} \
+                {output}
+        """

@@ -23,8 +23,25 @@ SAMPLES: [
   "6-3",
   "7-1",
   "7-2",
-  "7-3"
+  "7-3",
+  "8-1",
+  "8-2",
+  "8-3"
 ]
 GENOME:
   name: "TAIR10"
   refgenome: "/home/nison/work/refgenome/TAIR10"
+  refgenome_fasta: "/home/nison/work/refgenome/TAIR10/TAIR10.fasta"
+  refgenome_size: "/home/nison/work/refgenome/TAIR10/TAIR10.fasta.sizes"
+GENOMETILE:
+  genometile_bed: "data/tiled_genome_bed/TAIR10_window_100kb_step_50kb.bed"
+  window_size: 100000
+  step_size: 100000
+  window_size_name: "100kb"
+  step_size_name: "100kb"
+METAPROFILE:
+  region: "/home/nison/work/various_regions/TE/araport11_TE4000.bed"
+  binSize: 10
+  upstream: 2000
+  downstream: 2000
+  threads: 30
