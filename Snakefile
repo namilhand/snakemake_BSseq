@@ -120,7 +120,8 @@ rule deduplicate_bismark:
 
 rule methylext:
     output:
-        directory("results/methylext/{sample}")
+        directory = directory("results/methylext/{sample}"),
+        cx_report = "results/methylext/{sample}/{sample}.dedup.CX_report.txt"
     input: "results/bams/{sample}.dedup.bam"
     log:
         "log/methylext/{sample}.methylext.log"
@@ -134,7 +135,7 @@ rule methylext:
         CHH_methylext="CHH_context_{sample}.dedup.txt"
     shell:
         r"""
-        mkdir -p {output}
+        mkdir -p {output.directory}
         bismark_methylation_extractor \
             -p \
             --comprehensive \
@@ -143,7 +144,7 @@ rule methylext:
             --cytosine_report \
             --genome_folder {params.refgenome} \
             --multicore {threads} \
-            -o {output} \
+            -o {output.directory} \
             {input} &> {log}
         rm results/methylext/{wildcards.sample}/{params.CG_methylext}
         rm results/methylext/{wildcards.sample}/{params.CHG_methylext}
